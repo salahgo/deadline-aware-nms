@@ -1,0 +1,39 @@
+{
+  "title": "deadline-aware-nms: bounded candidate admission for deadline-critical NMS-based object detection",
+  "description": "<p>Reference implementation of the defense, attack objective and deadline metrics from the paper <em>Deadline-Aware Hardening of Real-Time Object Detection Against Candidate-Inflation Latency Attacks</em>.</p><p>An NMS-based detector performs an amount of work set by the number of candidates surviving its confidence threshold, and that number is chosen by the input. A candidate-inflation attack drives it far outside its clean range and the application deadline is what pays. Admitting at most K candidates to suppression bounds the pairwise comparisons an attacker can provoke, without retraining or weight modification, at the exported runtime boundary.</p><p>Contents: the admission cap with membership defined lexicographically so that a tied cutoff is deterministic; greedy IoU suppression as the serving path runs it; the differentiable candidate-count surrogate and its projected-gradient recurrence; tail quantile, deadline-miss ratio and a session-clustered bootstrap interval; and the deadline-calibrated rule for choosing K. A runnable demonstration on synthetic candidates needs no dataset, weights or GPU.</p>",
+  "upload_type": "software",
+  "license": "mit",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Gontara, Salah",
+      "affiliation": "Ecole Polytechnique de Sousse, Sousse, Tunisia"
+    },
+    {
+      "name": "Trabelsi, Selem",
+      "affiliation": "Ecole Polytechnique de Sousse, Sousse, Tunisia"
+    },
+    {
+      "name": "Ben Khalifa, Khaled",
+      "affiliation": "University of Monastir, Monastir, Tunisia"
+    }
+  ],
+  "keywords": [
+    "object detection",
+    "non-maximum suppression",
+    "real-time systems",
+    "latency attack",
+    "availability",
+    "deadline miss ratio",
+    "adversarial machine learning",
+    "edge computing"
+  ],
+  "related_identifiers": [
+    {
+      "relation": "isSupplementTo",
+      "identifier": "10.1007/XXXXX-XXX-XXXXX-X",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+title: >-
+  deadline-aware-nms: bounded candidate admission for deadline-critical
+  NMS-based object detection
+message: If you use this software, please cite both the software and the paper.
+type: software
+authors:
+  - family-names: Gontara
+    given-names: Salah
+    email: salah.gontara@polytecsousse.tn
+    affiliation: Ecole Polytechnique de Sousse, Sousse, Tunisia
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
+  - family-names: Trabelsi
+    given-names: Selem
+    affiliation: Ecole Polytechnique de Sousse, Sousse, Tunisia
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
+  - family-names: Ben Khalifa
+    given-names: Khaled
+    affiliation: >-
+      Technology and Medical Imaging Laboratory, Faculty of Medicine Monastir,
+      University of Monastir, Monastir, Tunisia
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
+version: 1.0.0
+license: MIT
+repository-code: https://github.com/ORG/deadline-aware-nms
+keywords:
+  - object detection
+  - non-maximum suppression
+  - real-time systems
+  - latency attack
+  - availability
+  - deadline miss ratio
+# doi: 10.5281/zenodo.XXXXXXX      # add after the first Zenodo release
+preferred-citation:
+  type: article
+  title: >-
+    Deadline-Aware Hardening of Real-Time Object Detection Against
+    Candidate-Inflation Latency Attacks
+  authors:
+    - family-names: Gontara
+      given-names: Salah
+    - family-names: Trabelsi
+      given-names: Selem
+    - family-names: Ben Khalifa
+      given-names: Khaled
+  journal: Journal of Real-Time Image Processing
+  year: 2026

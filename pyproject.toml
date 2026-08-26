@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deadline-nms"
+version = "1.0.0"
+description = "Bounded candidate admission for deadline-critical NMS-based object detection"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["object-detection", "non-maximum-suppression", "real-time",
+            "latency-attack", "availability", "deadline"]
+dependencies = ["numpy>=1.22"]
+
+[project.optional-dependencies]
+attack = ["torch>=2.0"]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["deadline_nms*"]
