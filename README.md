@@ -33,7 +33,24 @@ result = greedy_nms(boxes[keep], scores[keep], iou_thres=0.65)
 pairwise_bound(1024)                         # 523,776 comparisons, whatever the input
 ```
 
-Choosing K from a deadline rather than from a round number:
+Choosing K from a deadline rather than from a round number, with a certified bound
+(v2.0.0): every independently sampled input contributes all its requests, and a grid point
+is selected only if the bound PASSES. The grid is tested in increasing K and selection stops at
+the first point that does not PASS (fixed-sequence testing), so the selected K keeps the 95%
+level without a multiplicity correction:
+
+```python
+from deadline_nms import select_k_certified, exceedance_bound
+k_star, per_k = select_k_certified(
+    grid=[512, 1024, 2048, 4096, 5120],
+    latencies=lat,                 # K -> {input id: [suppression ms of every request]}
+    accuracy_cost=cost,            # K -> paired clean accuracy given up
+    budget_ms=33.3, max_accuracy_cost=1e-3)
+exceedance_bound(served_by_input, deadline_ms=33.3)   # PASS / FAIL / INCONCLUSIVE
+```
+
+The 1.x rule (a Student-t limit on the mean of session p95 values) is kept for
+compatibility but deprecated: it is not a bound on the p95 of future requests.
 
 ```python
 from deadline_nms import select_k
@@ -60,8 +77,9 @@ pip install pytest && PYTHONPATH=. python -m pytest tests -q
 | `admission.py` | the cap, with membership defined lexicographically in `(-score, index)` |
 | `nms.py` | greedy IoU suppression as the serving path runs it, and class offsetting |
 | `attack.py` | the differentiable candidate-count surrogate and the PGD recurrence |
-| `metrics.py` | tail quantile, deadline-miss ratio, session-clustered bootstrap interval |
-| `selection.py` | the deadline-calibrated rule for choosing K |
+| `metrics.py` | tail quantile, deadline-miss ratio, session-clustered bootstrap interval (descriptive) |
+| `bounds.py` | exact cluster-level bound on P(latency > deadline), three-valued verdict (v2.0.0) |
+| `selection.py` | the deadline-calibrated rule for choosing K (`select_k_certified`, v2.0.0) |
 
 ## Three things that are easy to get wrong
 
@@ -72,10 +90,14 @@ about which ones survived. Two runs can then admit different boxes and both clai
 "apply Top-K". Exact ties are reachable at fp16 and quantized scores. `admit_topk`
 admits everything strictly above the cutoff and fills the rest by ascending index.
 
-**Replayed requests are not independent trials.** The same image seen twice contributes
-the same difficulty twice. `session_bootstrap_ci` resamples sessions and then
-observations within them; pooling everything and resampling flat returns an interval
-far too narrow, and an exact binomial limit on a miss ratio has the same defect.
+**Replayed requests are not independent trials, and a deadline claim is about future
+requests.** The same image seen twice contributes the same difficulty twice. Since
+`Q_0.95(T) <= D` exactly when `P(T > D) <= 0.05`, `bounds.exceedance_bound` bounds that
+probability over independently sampled INPUTS, each contributing all its requests. It is
+valid for any dependence within an input, and it does not collapse to [0, 0] or [1, 1] when
+every request meets or misses the deadline, as a bootstrap of miss indicators does. With
+zero misses it needs at least 59 independent inputs to certify 0.05 at 95%;
+`min_inputs_for_pass()` returns that number.
 
 **A bounded suppression stage is not a bounded service.** `T_NMS ≤ D_supp` does not
 imply `L_e2e ≤ D_e2e`. Decode, inference, queueing, transport and serialisation are
@@ -85,13 +107,17 @@ for deadline integrity, not sufficient.
 
 ## Reported results
 
-Measured on a deployed YOLOv8x-P2 serving path at 1280 px, against a 33.3 ms budget:
-attacked suppression p95 falls from **672.42 ms uncapped to 4.28 ms at K = 1024**, for
-a clean cost of **0.00064 AP@[.50:.95]** as a paired difference at the deployed
-operating point. The bound holds on two detector geometries differing fourfold in
-anchor count, on three suppression backends, on a second image corpus and on a
-thermally throttled edge board. See the paper for the measurement scopes, the
-intervals and the negative end-to-end result.
+Measured on a deployed YOLOv8x-P2 serving path at 1280 px, against a 33.3 ms budget, over
+137 VisDrone inputs (one frame per video sequence) and five replay sessions: attacked
+suppression p95 on the deployed backend falls from **557.8 ms uncapped to 3.91 ms at
+K = 1024**, for a clean cost of **0.00064 AP@[.50:.95]** as a paired difference at the
+deployed operating point. The bound holds on two detector geometries differing fourfold in
+anchor count, on three suppression backends and on a second image corpus. On the edge
+board suppression time scales with the clock, so K must be selected at the lowest clock the
+platform reaches. Deadline verdicts are conditional on the runtime states measured; where a
+worker's state persists for its lifetime, take the restart as the unit. See the paper for the
+measurement scopes, the bounds and the end-to-end results, including the one configuration
+that meets 30 Hz under attack.
 
 The absolute milliseconds are properties of the platform they were taken on. The
 portable result is the bound on admitted work.
@@ -115,3 +141,18 @@ The archived release of this repository has its own DOI; see `CITATION.cff`.
 ## License
 
 MIT — see `LICENSE`.
+
+## Changelog
+
+**2.0.0** (2026-10, JRTIP revision). Added `bounds.py` (exact cluster-level Clopper-Pearson
+bound on the deadline-exceedance probability, PASS/FAIL/INCONCLUSIVE verdict) and
+`select_k_certified`, which tests the K grid in fixed sequence. `upper_confidence_limit` and
+`select_k` are deprecated. The 1.x
+t-limit bounded the mean of session p95 values, not the p95 of future requests, and the 1.x
+release used t(0.95, n-1) while the paper's computation used t(0.975, n-1). In
+`select_k_certified` a grid point without data is reported as MISSING and stops the sequence.
+`exceedance_bound`'s docstring states the scope of its heterogeneous-input guarantee (the
+verdicts, at the paper's sample sizes, for independent inputs). `examples/demo.py` uses the
+certified selection.
+
+**1.0.0** (2026-08). Initial release.

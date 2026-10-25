@@ -4,7 +4,9 @@ Runs in a few seconds and shows the three things the defense rests on:
 
   1. suppression cost is set by the candidate count, not by the image;
   2. a global cap bounds it, and the bound is the one Eq. (6) states;
-  3. the cap is chosen from the deadline rather than from a round number.
+  3. the cap is chosen from the deadline rather than from a round number, with the
+     cluster-level bound (select_k_certified): one candidate set is one independent input,
+     and a pass with no misses needs at least 59 of them.
 
     python examples/demo.py
 """
@@ -15,10 +17,11 @@ import time
 import numpy as np
 
 from deadline_nms import (admit_topk, deadline_miss_ratio, greedy_nms,
-                          pairwise_bound, quantile, select_k)
+                          pairwise_bound, quantile, select_k_certified)
 
 BUDGET_MS = 33.3          # a 30 Hz frame period, the screen for the suppression stage
 IOU = 0.65
+N_INPUTS = 60             # independent inputs; with zero misses a pass needs C >= 59
 
 
 def candidates(n: int, rng: np.random.Generator, size: int = 1280):
@@ -54,18 +57,22 @@ def main() -> None:
         print(f"{n:>12,}  {p95:>13.2f}  {'MISS' if p95 > BUDGET_MS else 'ok':>10}")
 
     print("\nthe cap bounds it, whatever the input does")
-    boxes, scores = candidates(40_000, rng)
+    inputs = [candidates(40_000, rng) for _ in range(N_INPUTS)]
     grid = (256, 512, 1024, 2048, 4096, 8192)
-    sessions, cost = {}, {}
+    latencies, cost = {}, {}
     print(f"{'K':>6}  {'NMS p95 (ms)':>13}  {'pair bound':>12}")
     for k in grid:
-        sessions[k] = [suppression_ms(boxes, scores, k) for _ in range(5)]
+        latencies[k] = {i: [suppression_ms(b, s, k)] for i, (b, s) in enumerate(inputs)}
         cost[k] = 0.0 if k >= 1024 else 0.02      # stand-in: accuracy falls away below
-        print(f"{k:>6}  {quantile(sessions[k]):>13.2f}  {pairwise_bound(k):>12,}")
+        p95 = quantile([x for v in latencies[k].values() for x in v])
+        print(f"{k:>6}  {p95:>13.2f}  {pairwise_bound(k):>12,}")
 
-    chosen = select_k(grid, sessions, cost, BUDGET_MS, max_accuracy_cost=1e-3)
-    print(f"\nlargest K meeting the {BUDGET_MS} ms screen and the accuracy limit: {chosen}")
+    chosen, per_k = select_k_certified(grid, latencies, cost, BUDGET_MS, max_accuracy_cost=1e-3)
+    print(f"\nlargest K whose bound passes the {BUDGET_MS} ms screen, tested in fixed sequence, "
+          f"within the accuracy limit: {chosen}")
+    print("  " + ", ".join(f"K={k}: {r['verdict']}" for k, r in per_k.items()))
 
+    boxes, scores = inputs[0]
     served = [suppression_ms(boxes, scores, 1024) for _ in range(40)]
     print(f"at K=1024: p95 {quantile(served):.2f} ms, "
           f"deadline-miss ratio {deadline_miss_ratio(served, BUDGET_MS):.3f}")

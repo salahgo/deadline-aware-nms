@@ -32,7 +32,12 @@ def deadline_miss_ratio(samples, deadline_ms: float) -> float:
 
 def session_bootstrap_ci(sessions, statistic, n_boot: int = 10000,
                          alpha: float = 0.05, seed: int = 0):
-    """Two-sided interval for ``statistic`` under a hierarchical resample.
+    """Two-sided interval for ``statistic`` under a hierarchical resample (DESCRIPTIVE).
+
+    Not a deadline certificate: it degenerates when every observation sits at a boundary,
+    and its nested resampling understates input-level uncertainty when the same inputs
+    recur in every session (a crossed design). For deadline decisions use
+    ``bounds.exceedance_bound``.
 
     ``sessions`` is a sequence of sequences: one inner sequence per independent timing
     session, each holding that session's per-image observations.

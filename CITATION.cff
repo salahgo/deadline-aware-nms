@@ -9,20 +9,19 @@ authors:
     given-names: Salah
     email: salah.gontara@polytecsousse.tn
     affiliation: Ecole Polytechnique de Sousse, Sousse, Tunisia
-    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
+    orcid: "https://orcid.org/0000-0003-3076-0177"   
   - family-names: Trabelsi
     given-names: Selem
     affiliation: Ecole Polytechnique de Sousse, Sousse, Tunisia
-    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
+
   - family-names: Ben Khalifa
     given-names: Khaled
     affiliation: >-
       Technology and Medical Imaging Laboratory, Faculty of Medicine Monastir,
       University of Monastir, Monastir, Tunisia
-    # orcid: "https://orcid.org/0000-0000-0000-0000"   # TODO before release
-version: 1.0.0
+version: 2.0.0
 license: MIT
-repository-code: https://github.com/ORG/deadline-aware-nms
+repository-code: https://github.com/salahgo/deadline-aware-nms
 keywords:
   - object detection
   - non-maximum suppression
@@ -30,7 +29,7 @@ keywords:
   - latency attack
   - availability
   - deadline miss ratio
-# doi: 10.5281/zenodo.XXXXXXX      # add after the first Zenodo release
+doi: 10.5281/zenodo.22117976      
 preferred-citation:
   type: article
   title: >-

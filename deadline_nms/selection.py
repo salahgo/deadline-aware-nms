@@ -3,15 +3,20 @@ from __future__ import annotations
 
 import math
 
-__all__ = ["upper_confidence_limit", "select_k"]
+__all__ = ["upper_confidence_limit", "select_k", "select_k_certified"]
 
 
 def upper_confidence_limit(values, conf: float = 0.95) -> float:
-    """One-sided Student-t upper limit on the mean of a few session statistics.
+    """DEPRECATED since 2.0.0: a one-sided Student-t limit on the MEAN of session statistics.
 
-    Written for the case it is actually used in: a handful of sessions. At n=3 the
-    multiplier is 4.303 rather than 1.96, and a rule that hides that behind a normal
-    approximation will select a cap it cannot defend.
+    It is not a confidence bound on the p95 of future requests (a quantile of a mixture is
+    not the mean of the conditional quantiles), and it carries no between-input uncertainty
+    when the sessions replay the same inputs. Use ``select_k_certified`` with
+    ``bounds.exceedance_bound``. Kept only so code written against 1.x still imports.
+
+    The multiplier is the ONE-SIDED 95% Student-t quantile (2.920 at n = 3, i.e. 2 degrees of
+    freedom); 4.303 is the two-sided 95% value, which the submitted manuscript used by mistake.
+    Beyond 11 sessions it falls back to the normal quantile 1.645, an approximation.
     """
     xs = [float(v) for v in values]
     n = len(xs)
@@ -31,7 +36,10 @@ def upper_confidence_limit(values, conf: float = 0.95) -> float:
 
 def select_k(grid, suppression_sessions, accuracy_cost, budget_ms: float,
              max_accuracy_cost: float):
-    """Largest cap whose bounded tail fits the budget and whose accuracy cost is allowed.
+    """DEPRECATED since 2.0.0. Largest cap whose mean-of-session-p95 limit fits the budget.
+
+    This is NOT a confidence limit on the p95 of future requests (see
+    ``upper_confidence_limit``). Use ``select_k_certified``.
 
     ``grid``                  candidate values of K, any order
     ``suppression_sessions``  K -> sequence of per-session suppression p95 values (ms)
@@ -42,11 +50,10 @@ def select_k(grid, suppression_sessions, accuracy_cost, budget_ms: float,
 
     Returns the selected K, or ``None`` if no grid point satisfies both conditions.
 
-    The tail term is an UPPER CONFIDENCE LIMIT on the p95, not the p95 itself: a cap
-    chosen on a point estimate is chosen on one draw of the noise. Selecting the
-    boundary value is also not the same as deploying it -- the margin between the
-    selected K and the deployed one is a declared choice, not a consequence of the
-    sweep.
+    The tail term is a Student-t limit on the MEAN of session p95 values, kept only so code
+    written against 1.x still runs. Selecting the boundary value is also not the same as
+    deploying it -- the margin between the selected K and the deployed one is a declared
+    choice, not a consequence of the sweep.
     """
     ok = []
     for k in sorted(grid):
@@ -59,3 +66,44 @@ def select_k(grid, suppression_sessions, accuracy_cost, budget_ms: float,
             continue
         ok.append(k)
     return max(ok) if ok else None
+
+
+def select_k_certified(grid, latencies, accuracy_cost, budget_ms: float,
+                       max_accuracy_cost: float, rho: float = 0.05, alpha: float = 0.05):
+    """Largest cap whose exceedance probability is CERTIFIED within rho (v2.0.0).
+
+    ``latencies``  K -> {input id: [suppression latencies of all its requests, ms]}, with
+                   inputs sampled independently (e.g. one frame per video sequence)
+    ``accuracy_cost`` K -> paired clean accuracy given up at that cap
+
+    A K qualifies only if ``bounds.exceedance_bound`` returns PASS at ``budget_ms``: an
+    INCONCLUSIVE grid point is not selected. Returns (K or None, {K: bound result}); every
+    grid point with data is evaluated and reported.
+
+    The grid is tested in FIXED SEQUENCE: in increasing K, stopping at the first K whose bound
+    does not PASS, and the selected K is the largest one before that stop that also meets the
+    accuracy condition (a deterministic policy filter, not a test). Fixed-sequence testing
+    keeps the 1 - alpha level for the selected K without a multiplicity correction and without
+    assuming that the verdict is monotone in K; a PASS at a larger K after the stop is reported
+    but never selected. A grid point with no latency data is reported as MISSING and stops the
+    sequence like any other non-PASS. The bound is conditional on the runtime states the latencies were
+    measured in (see ``bounds``).
+    """
+    from .bounds import exceedance_bound
+
+    results, ok, stopped = {}, [], False
+    for k in sorted(grid):
+        by_input = latencies.get(k)
+        if not by_input:
+            # A declared grid point without data is not a PASS: it ends the sequence, as an
+            # untested hypothesis must, rather than being skipped over.
+            results[k] = {"verdict": "MISSING", "C": 0}
+            stopped = True
+            continue
+        r = exceedance_bound(by_input, budget_ms, rho=rho, alpha=alpha)
+        results[k] = r
+        if r["verdict"] != "PASS":
+            stopped = True
+        if not stopped and accuracy_cost.get(k, float("inf")) <= max_accuracy_cost:
+            ok.append(k)
+    return (max(ok) if ok else None), results
