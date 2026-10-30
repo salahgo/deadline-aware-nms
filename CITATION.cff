@@ -19,7 +19,7 @@ authors:
     affiliation: >-
       Technology and Medical Imaging Laboratory, Faculty of Medicine Monastir,
       University of Monastir, Monastir, Tunisia
-version: 2.0.0
+version: 2.1.0
 license: MIT
 repository-code: https://github.com/salahgo/deadline-aware-nms
 keywords:

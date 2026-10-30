@@ -5,7 +5,7 @@ from .metrics import deadline_miss_ratio, quantile, session_bootstrap_ci
 from .nms import class_offset, greedy_nms
 from .selection import select_k, select_k_certified, upper_confidence_limit
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __all__ = [
     "admit_topk", "pairwise_bound",
     "greedy_nms", "class_offset",

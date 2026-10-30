@@ -1,6 +1,6 @@
 {
   "title": "deadline-aware-nms: bounded candidate admission for deadline-critical NMS-based object detection",
-  "description": "<p>Reference implementation of the defense, attack objective and deadline metrics from the paper <em>Deadline-Aware Hardening of Real-Time Object Detection Against Candidate-Inflation Latency Attacks</em>.</p><p>An NMS-based detector performs an amount of work set by the number of candidates surviving its confidence threshold, and that number is chosen by the input. A candidate-inflation attack drives it far outside its clean range and the application deadline is what pays. Admitting at most K candidates to suppression bounds the pairwise comparisons an attacker can provoke, without retraining or weight modification, at the exported runtime boundary.</p><p>Contents: the admission cap with membership defined lexicographically so that a tied cutoff is deterministic; greedy IoU suppression as the serving path runs it; the differentiable candidate-count surrogate and its projected-gradient recurrence; tail quantile and deadline-miss ratio; a cluster-level Clopper–Pearson bound on the deadline-exceedance probability with a PASS/FAIL/INCONCLUSIVE verdict; and deadline-calibrated selection of K by fixed-sequence testing. A runnable demonstration on synthetic candidates needs no dataset, weights or GPU.</p>",
+  "description": "<p>Reference implementation of the defense, attack objective and deadline metrics from the paper <em>Deadline-Aware Hardening of Real-Time Object Detection Against Candidate-Inflation Latency Attacks</em>.</p><p>An NMS-based detector performs an amount of work set by the number of candidates surviving its confidence threshold, and that number is chosen by the input. A candidate-inflation attack drives it far outside its clean range and the application deadline is what pays. Admitting at most K candidates to suppression bounds the pairwise comparisons an attacker can provoke, without retraining or weight modification, at the exported runtime boundary.</p><p>Contents: the admission cap with membership defined lexicographically so that a tied cutoff is deterministic; greedy IoU suppression as the serving path runs it, visiting candidates in the same (score, index) order as admission, with optional class-aware comparison and an output limit, so that the conditions under which the cap leaves the output unchanged can be checked; the differentiable candidate-count surrogate and its projected-gradient recurrence; tail quantile and deadline-miss ratio; a cluster-level Clopper–Pearson bound on the deadline-exceedance probability with a PASS/FAIL/INCONCLUSIVE verdict; and deadline-calibrated selection of K by fixed-sequence testing. A runnable demonstration on synthetic candidates needs no dataset, weights or GPU.</p>",
   "upload_type": "software",
   "license": "mit",
   "access_right": "open",
@@ -36,5 +36,6 @@
       "resource_type": "dataset",
       "scheme": "doi"
     }
-  ]
+  ],
+  "version": "2.1.0"
 }

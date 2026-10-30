@@ -29,7 +29,8 @@ import numpy as np
 from deadline_nms import admit_topk, greedy_nms, pairwise_bound
 
 keep   = admit_topk(scores, k=1024)          # deterministic even when the cutoff ties
-result = greedy_nms(boxes[keep], scores[keep], iou_thres=0.65)
+result = keep[greedy_nms(boxes[keep], scores[keep], iou_thres=0.65,
+                         classes=classes[keep], limit=300, order_ids=keep)]
 pairwise_bound(1024)                         # 523,776 comparisons, whatever the input
 ```
 
@@ -75,13 +76,13 @@ pip install pytest && PYTHONPATH=. python -m pytest tests -q
 | Module | Contents |
 |---|---|
 | `admission.py` | the cap, with membership defined lexicographically in `(-score, index)` |
-| `nms.py` | greedy IoU suppression as the serving path runs it, and class offsetting |
+| `nms.py` | greedy IoU suppression in the admission order `(-score, index)`, class-aware and with an output limit (v2.1.0); class offsetting |
 | `attack.py` | the differentiable candidate-count surrogate and the PGD recurrence |
 | `metrics.py` | tail quantile, deadline-miss ratio, session-clustered bootstrap interval (descriptive) |
 | `bounds.py` | exact cluster-level bound on P(latency > deadline), three-valued verdict (v2.0.0) |
 | `selection.py` | the deadline-calibrated rule for choosing K (`select_k_certified`, v2.0.0) |
 
-## Three things that are easy to get wrong
+## Four things that are easy to get wrong
 
 **The tie rule is part of the specification.** `np.argpartition` is not stable, so when
 more candidates tie at the cutoff than there are places left it returns an arbitrary
@@ -89,6 +90,15 @@ subset — and sorting the survivors afterwards settles their order while doing 
 about which ones survived. Two runs can then admit different boxes and both claim to
 "apply Top-K". Exact ties are reachable at fp16 and quantized scores. `admit_topk`
 admits everything strictly above the cutoff and fills the rest by ascending index.
+
+**Suppression must use the same order as admission.** Breaking score ties one way when
+admitting and another way when suppressing makes the kept set depend on the sorting
+algorithm. Since v2.1.0 `greedy_nms` visits candidates in `(-score, index)` order, the
+key `admit_topk` uses; pass `order_ids=keep` when suppressing an admitted subset. With
+one order, identical overlap arithmetic and the same output limit, a capped run that
+already keeps `limit` boxes returns exactly the first `limit` boxes of the uncapped run
+(tested). Use `classes=` rather than `class_offset` for class-aware suppression: an
+offset stride must exceed the coordinate span, and detector boxes extend past the canvas.
 
 **Replayed requests are not independent trials, and a deadline claim is about future
 requests.** The same image seen twice contributes the same difficulty twice. Since
@@ -118,6 +128,10 @@ platform reaches. Deadline verdicts are conditional on the runtime states measur
 worker's state persists for its lifetime, take the restart as the unit. See the paper for the
 measurement scopes, the bounds and the end-to-end results, including the one configuration
 that meets 30 Hz under attack.
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 The absolute milliseconds are properties of the platform they were taken on. The
 portable result is the bound on admitted work.

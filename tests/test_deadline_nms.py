@@ -181,3 +181,85 @@ def test_min_inputs_closed_form():
     assert _cpu(0, 59) <= 0.05 < _cpu(0, 58)
     # a Bonferroni split over 11 grid points still passes with zero misses at C = 137
     assert _cpu(0, 137, 0.05 / 11) < 0.05
+
+
+# --- 2.1.0: one total order through admission and suppression -------------------------
+
+from deadline_nms import class_offset
+
+
+def test_nms_breaks_score_ties_by_index_like_admission():
+    """Four identical boxes with one score: admission ranks them 0..3, so must NMS."""
+    boxes = np.array([[0.0, 0.0, 10.0, 10.0]] * 4)
+    scores = np.full(4, 0.5, np.float32)
+    np.testing.assert_array_equal(admit_topk(scores, 4), [0, 1, 2, 3])
+    assert greedy_nms(boxes, scores, 0.65) == [0]
+
+
+def test_order_ids_carry_the_admission_order_into_a_subset():
+    boxes = np.array([[0.0, 0.0, 10.0, 10.0]] * 3)
+    scores = np.array([0.5, 0.5, 0.5])
+    keep = np.array([7, 3, 9])                     # global indices of the subset
+    assert greedy_nms(boxes, scores, 0.65, order_ids=keep) == [1]
+
+
+def _uncapped_and_capped(seed, n=3000, k=400, limit=60, quantize=True):
+    rng = np.random.default_rng(seed)
+    xy = rng.uniform(0, 1280, (n, 2))
+    wh = rng.uniform(4, 80, (n, 2))
+    boxes = np.concatenate([xy, xy + wh], axis=1)
+    scores = rng.random(n)
+    if quantize:                                   # fp16-like: many exact ties
+        scores = np.round(scores * 64) / 64
+    classes = rng.integers(0, 10, n)
+    full = greedy_nms(boxes, scores, 0.65, classes=classes, limit=limit)
+    adm = admit_topk(scores, k)
+    sub = greedy_nms(boxes[adm], scores[adm], 0.65, classes=classes[adm], limit=limit,
+                     order_ids=adm)
+    return full, adm[sub].tolist(), limit
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_prefix_property_when_the_capped_run_keeps_limit_boxes(seed):
+    """If NMS on the admitted K already keeps `limit` boxes, they equal uncapped NMS's."""
+    full, capped, limit = _uncapped_and_capped(seed)
+    if len(capped) == limit:
+        assert capped == full
+    else:                                          # premise not met: nothing is claimed
+        assert len(capped) < limit
+
+
+def test_limit_equals_truncation():
+    rng = np.random.default_rng(5)
+    xy = rng.uniform(0, 500, (500, 2))
+    boxes = np.concatenate([xy, xy + 30], axis=1)
+    scores = rng.random(500)
+    assert greedy_nms(boxes, scores, 0.5, limit=25) == greedy_nms(boxes, scores, 0.5)[:25]
+
+
+@pytest.mark.parametrize("scores", [np.array([0, 1], np.uint8), np.array([-128, 5], np.int8),
+                                    np.array([0, 1], np.int64), np.array([0.0, 1.0])])
+def test_integer_scores_keep_their_numeric_order(scores):
+    """Negating uint8 wraps and negating int8's minimum overflows; both reversed the order."""
+    boxes = np.array([[0.0, 0.0, 1.0, 1.0], [2.0, 2.0, 3.0, 3.0]])
+    assert greedy_nms(boxes, scores, 0.65, limit=1) == [1]
+
+
+@pytest.mark.parametrize("bad", [np.array([True, False]), np.array([0.5, np.nan]),
+                                 np.array(["a", "b"])])
+def test_invalid_scores_are_rejected(bad):
+    boxes = np.array([[0.0, 0.0, 1.0, 1.0], [2.0, 2.0, 3.0, 3.0]])
+    with pytest.raises((TypeError, ValueError)):
+        greedy_nms(boxes, bad, 0.65)
+
+
+def test_class_offset_rejects_a_stride_inside_the_coordinate_span():
+    """Boxes past a 1280-px canvas: stride 1281 makes opposite corners collide."""
+    boxes = np.array([[1285.0, 1285.0, 1296.0, 1296.0], [4.0, 4.0, 15.0, 15.0]])
+    classes = np.array([0, 1])
+    with pytest.raises(ValueError):
+        class_offset(boxes, classes, 1281.0)
+    scores = np.array([0.9, 0.8])
+    assert greedy_nms(boxes, scores, 0.65, classes=classes) == [0, 1]
+    shifted = class_offset(boxes, classes, 4096.0)
+    assert greedy_nms(shifted, scores, 0.65) == [0, 1]
