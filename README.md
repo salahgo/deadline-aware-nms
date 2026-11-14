@@ -50,6 +50,12 @@ k_star, per_k = select_k_certified(
 exceedance_bound(served_by_input, deadline_ms=33.3)   # PASS / FAIL / INCONCLUSIVE
 ```
 
+`select_k_bonferroni` takes the same arguments and tests every grid point at
+`alpha / len(grid)`; it needs no order fixed in advance and is stricter at each point. Use
+the rule you declared before looking at the data. In the paper the analysis plan declared
+the Bonferroni rule for the suppression screen (it selects 4096 on the deployed backend;
+the fixed sequence would select 4608) and the fixed sequence for the served test.
+
 The 1.x rule (a Student-t limit on the mean of session p95 values) is kept for
 compatibility but deprecated: it is not a bound on the p95 of future requests.
 
@@ -76,11 +82,11 @@ pip install pytest && PYTHONPATH=. python -m pytest tests -q
 | Module | Contents |
 |---|---|
 | `admission.py` | the cap, with membership defined lexicographically in `(-score, index)` |
-| `nms.py` | greedy IoU suppression in the admission order `(-score, index)`, class-aware and with an output limit (v2.1.0); class offsetting |
-| `attack.py` | the differentiable candidate-count surrogate and the PGD recurrence |
+| `nms.py` | greedy IoU suppression in the admission order `(-score, index)`, class-aware and with an output limit (v2.1.0); class offsetting in the serving path's float64 arithmetic (v2.2.0) |
+| `attack.py` | the differentiable candidate-count surrogate and the PGD recurrence, from a random start as in the paper (v2.2.0) |
 | `metrics.py` | tail quantile, deadline-miss ratio, session-clustered bootstrap interval (descriptive) |
 | `bounds.py` | exact cluster-level bound on P(latency > deadline), three-valued verdict (v2.0.0) |
-| `selection.py` | the deadline-calibrated rule for choosing K (`select_k_certified`, v2.0.0) |
+| `selection.py` | the deadline-calibrated rule for choosing K: fixed sequence (`select_k_certified`, v2.0.0) or Bonferroni over the grid (`select_k_bonferroni`, v2.2.0) |
 
 ## Four things that are easy to get wrong
 
@@ -119,15 +125,22 @@ for deadline integrity, not sufficient.
 
 Measured on a deployed YOLOv8x-P2 serving path at 1280 px, against a 33.3 ms budget, over
 137 VisDrone inputs (one frame per video sequence) and five replay sessions: attacked
-suppression p95 on the deployed backend falls from **557.8 ms uncapped to 3.91 ms at
-K = 1024**, for a clean cost of **0.00064 AP@[.50:.95]** as a paired difference at the
-deployed operating point. The bound holds on two detector geometries differing fourfold in
-anchor count, on three suppression backends and on a second image corpus. On the edge
-board suppression time scales with the clock, so K must be selected at the lowest clock the
-platform reaches. Deadline verdicts are conditional on the runtime states measured; where a
-worker's state persists for its lifetime, take the restart as the unit. See the paper for the
-measurement scopes, the bounds and the end-to-end results, including the one configuration
-that meets 30 Hz under attack.
+suppression p95 on the deployed backend falls from **867.3 ms uncapped to 4.25 ms at
+K = 1024**, for a clean cost of **0.00061 AP@[.50:.95]** on validation and 0.00018 on
+held-out images, as paired differences at the served operating point. The bound holds on
+two detector geometries differing fourfold in anchor count, on three suppression backends
+and on a second image corpus. On the edge board suppression time scales with the clock, so
+K must be selected at the lowest clock the platform reaches; there a compiled routine that
+stops at the output limit (`limit=` in `greedy_nms`) passes the 33.3 ms screen at K = 1024
+at both clocks tested, where the NumPy loop does not. Deadline verdicts are conditional on
+the runtime states measured; where a worker's state persists for its lifetime, take the
+restart as the unit. See the paper for the measurement scopes, the bounds and the
+end-to-end results, including the configurations that meet 30 Hz under attack.
+
+Releases up to 2.1.0 quoted 557.8 ms and 3.91 ms here, with a clean cost of 0.00064. Those
+timings came from a replay that kept the offset boxes in float32, whereas the serving path
+computes in float64; the clean cost was recomputed at the combined served operating point.
+The values above are the corrected ones, as in the revised paper.
 
 ## Changes
 

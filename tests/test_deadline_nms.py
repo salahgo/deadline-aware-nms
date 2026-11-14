@@ -263,3 +263,56 @@ def test_class_offset_rejects_a_stride_inside_the_coordinate_span():
     assert greedy_nms(boxes, scores, 0.65, classes=classes) == [0, 1]
     shifted = class_offset(boxes, classes, 4096.0)
     assert greedy_nms(shifted, scores, 0.65) == [0, 1]
+
+
+def test_class_offset_uses_the_serving_paths_float64_arithmetic():
+    """float32 boxes + integer class index: NumPy promotes to float64, and so does class_offset."""
+    rng = np.random.default_rng(0)
+    xy = rng.uniform(0, 1200, (64, 2)).astype(np.float32)
+    boxes = np.concatenate([xy, xy + rng.uniform(1, 60, (64, 2)).astype(np.float32)], axis=1)
+    classes = rng.integers(0, 10, 64)
+    shifted = class_offset(boxes, classes, 4096.0)
+    assert shifted.dtype == np.float64
+    assert np.array_equal(shifted, boxes + classes[:, None] * 4096)          # the worker's expression
+    in_float32 = boxes + classes[:, None].astype(np.float32) * np.float32(4096.0)
+    assert in_float32.dtype == np.float32                                     # what 2.1.0 returned
+    assert not np.array_equal(shifted, in_float32.astype(np.float64))         # and it is not the same sum
+
+
+def test_bonferroni_selection_is_stricter_than_the_fixed_sequence():
+    """137 inputs, twelve grid values: one input over the deadline passes uncorrected (U = 0.034)
+    and does not pass at alpha / 12 (U = 0.054), so the two rules select neighbouring caps."""
+    from deadline_nms import select_k_bonferroni, select_k_certified
+    grid = [512, 1024, 2048, 3072, 4096, 4608, 5120, 5632, 6144, 8192, 30000, 100000]
+    lat = {k: {i: [10.0] * 5 for i in range(137)} for k in grid}
+    lat[4608][0] = [10.0, 10.0, 40.0, 10.0, 10.0]                # one input over once
+    for k in (5120, 5632, 6144, 8192, 30000, 100000):
+        lat[k] = {i: [40.0] * 5 for i in range(137)}             # every input over every time
+    cost = {k: 0.0 for k in grid}
+    fixed, per_fixed = select_k_certified(grid, lat, cost, 33.3, 1e-3)
+    bonf, per_bonf = select_k_bonferroni(grid, lat, cost, 33.3, 1e-3)
+    assert fixed == 4608 and bonf == 4096
+    assert per_fixed[4608]["verdict"] == "PASS" and per_bonf[4608]["verdict"] == "INCONCLUSIVE"
+    assert per_bonf[5120]["verdict"] == "FAIL"
+    assert select_k_bonferroni([], {}, {}, 33.3, 1e-3) == (None, {})
+    assert select_k_bonferroni([512], {}, {512: 0.0}, 33.3, 1e-3)[1][512]["verdict"] == "MISSING"
+
+
+def test_pgd_starts_at_a_random_point_inside_the_ball_by_default():
+    torch = pytest.importorskip("torch")
+    from deadline_nms.attack import pgd_inflate
+    image = torch.full((1, 3, 8, 8), 0.5)
+    image[0, 0, 0, 0] = 0.0                                   # a pixel at the edge of the range
+    score_fn = lambda x: x.reshape(-1, 1).repeat(1, 2)        # noqa: E731  differentiable stand-in
+    eps = 8 / 255
+    g = torch.Generator().manual_seed(1337)
+    start = pgd_inflate(image, score_fn, 0.3, eps, steps=0, generator=g)
+    assert float((start - image).abs().max()) <= eps + 1e-7 and float(start.min()) >= 0.0
+    assert not torch.equal(start, image)                      # a random start, not zero
+    again = pgd_inflate(image, score_fn, 0.3, eps, steps=0, generator=torch.Generator().manual_seed(1337))
+    assert torch.equal(start, again)                          # repeatable with the same seed
+    assert torch.equal(pgd_inflate(image, score_fn, 0.3, eps, steps=0, random_start=False), image)
+    out = pgd_inflate(image, score_fn, 0.3, eps, steps=5, generator=torch.Generator().manual_seed(1))
+    assert float((out - image).abs().max()) <= eps + 1e-6
+    assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+

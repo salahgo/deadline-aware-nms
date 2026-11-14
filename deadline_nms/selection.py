@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-__all__ = ["upper_confidence_limit", "select_k", "select_k_certified"]
+__all__ = ["upper_confidence_limit", "select_k", "select_k_certified", "select_k_bonferroni"]
 
 
 def upper_confidence_limit(values, conf: float = 0.95) -> float:
@@ -105,5 +105,41 @@ def select_k_certified(grid, latencies, accuracy_cost, budget_ms: float,
         if r["verdict"] != "PASS":
             stopped = True
         if not stopped and accuracy_cost.get(k, float("inf")) <= max_accuracy_cost:
+            ok.append(k)
+    return (max(ok) if ok else None), results
+
+
+def select_k_bonferroni(grid, latencies, accuracy_cost, budget_ms: float,
+                        max_accuracy_cost: float, rho: float = 0.05, alpha: float = 0.05):
+    """Largest cap that PASSES with a Bonferroni correction over the grid (v2.2.0).
+
+    Every grid point is tested at level ``alpha / len(grid)``, and the selected K is the
+    largest one that passes and meets the accuracy condition. Unlike the fixed-sequence
+    rule of ``select_k_certified`` it needs no order to be fixed in advance, at the price
+    of a stricter test at each point: with 137 inputs and twelve grid values a point with
+    one input over the deadline passes uncorrected (upper limit 0.034) and does not pass
+    corrected (0.054). The paper's analysis plan declared this rule for the suppression
+    screen, where it selects one grid step less than the fixed sequence does; which rule
+    is confirmatory is decided by which one was declared before the data.
+
+    Arguments as ``select_k_certified``. Returns (K or None, {K: bound result}); a grid
+    point without data is reported as MISSING and is not selected. The correction counts
+    every declared grid point, with or without data.
+    """
+    from .bounds import exceedance_bound
+
+    ks = sorted(grid)
+    if not ks:
+        return None, {}
+    level = alpha / len(ks)
+    results, ok = {}, []
+    for k in ks:
+        by_input = latencies.get(k)
+        if not by_input:
+            results[k] = {"verdict": "MISSING", "C": 0}
+            continue
+        r = exceedance_bound(by_input, budget_ms, rho=rho, alpha=level)
+        results[k] = r
+        if r["verdict"] == "PASS" and accuracy_cost.get(k, float("inf")) <= max_accuracy_cost:
             ok.append(k)
     return (max(ok) if ok else None), results

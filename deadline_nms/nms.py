@@ -105,10 +105,16 @@ def class_offset(boxes: np.ndarray, classes: np.ndarray, stride: float) -> np.nd
     corners then overlap after the shift and one suppresses the other. Since 2.1.0 a
     stride that does not exceed the span raises; ``greedy_nms(..., classes=...)``
     avoids the assumption altogether.
+
+    Since 2.2.0 the result is float64 whatever the dtype of ``boxes``. The serving path
+    adds an integer class index to float32 boxes, which NumPy promotes to float64, so the
+    sum is exact; 2.1.0 cast the offset to the dtype of ``boxes`` and so rounded the sum
+    in float32. The two can disagree on a pair whose IoU sits at the threshold, and a
+    float32 replay of the suppression stage also runs faster than the serving path does.
     """
     boxes = np.asarray(boxes)
     if boxes.size:
         span = float(boxes.max() - boxes.min())
         if not stride > span:
             raise ValueError(f"stride {stride} does not exceed the coordinate span {span}")
-    return boxes + np.asarray(classes)[:, None].astype(boxes.dtype) * stride
+    return boxes.astype(np.float64) + np.asarray(classes)[:, None].astype(np.float64) * stride

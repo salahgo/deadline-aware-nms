@@ -29,20 +29,32 @@ def soft_candidate_count(scores, tau: float, temperature: float = 0.01):
 
 
 def pgd_inflate(image, score_fn, tau: float, epsilon: float, step: float = 0.005,
-                steps: int = 100, temperature: float = 0.01):
+                steps: int = 100, temperature: float = 0.01, *,
+                random_start: bool = True, generator=None):
     """Maximise the surrogate count inside an L-inf ball. Returns the attacked image.
 
-    ``image``     (1, C, H, W) float tensor in [0, 1]
-    ``score_fn``  image -> (anchors, classes) per-class probabilities, differentiable
+    ``image``         (1, C, H, W) float tensor in [0, 1]
+    ``score_fn``      image -> (anchors, classes) per-class probabilities, differentiable
+    ``random_start``  draw the first iterate uniformly in the epsilon-ball (default, and
+                      what the paper's attack does); ``False`` starts at zero, as 2.1.0 did
+    ``generator``     optional ``torch.Generator`` for the start; without one the global
+                      generator is used, so ``torch.manual_seed`` makes the run repeatable
 
-    Deterministic: ``delta`` starts at zero and every step is the sign of the gradient,
-    so there is no attack-seed variance to report and a replicate count is a timing
-    session rather than a fresh attack. The iterate is projected back onto the
-    epsilon-ball and onto the valid pixel range after every step, so the returned image
-    is one a client could actually submit.
+    The paper's attack starts from a point drawn uniformly in the epsilon-ball (its
+    crafting run seeded the generator once, with 1337) and then takes 100 sign-gradient
+    steps of 0.005. Up to 2.1.0 this function started at zero, which is a different
+    attack: use ``random_start=False`` only to reproduce those versions. With a random
+    start the result depends on the seed, so fix it and report it. Every iterate,
+    including the first, is projected onto the epsilon-ball and onto the valid pixel
+    range, so the returned image is one a client could actually submit.
     """
     import torch
-    delta = torch.zeros_like(image, requires_grad=True)
+    if random_start:
+        start = torch.empty_like(image)
+        start.uniform_(-epsilon, epsilon, generator=generator)
+        delta = ((image + start).clamp(0.0, 1.0) - image).requires_grad_(True)
+    else:
+        delta = torch.zeros_like(image, requires_grad=True)
     for _ in range(steps):
         loss = soft_candidate_count(score_fn(image + delta), tau, temperature)
         grad, = torch.autograd.grad(loss, delta)

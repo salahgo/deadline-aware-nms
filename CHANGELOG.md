@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.2.0 (2026-11-14)
+
+Brings the library in line with the second revision of the paper. Admission, bounds and
+`greedy_nms` are unchanged.
+
+- `class_offset` returns float64 whatever the dtype of the boxes. The serving path adds an
+  integer class index to float32 boxes, which NumPy promotes to float64; 2.1.0 cast the
+  offset to the box dtype and rounded the sum in float32. The paper's replay of the
+  suppression stage had done the same and so ran 6 to 43% faster than the serving path in a
+  same-session comparison; its timings were corrected in the second revision. Kept sets
+  can differ between the two only for a pair whose IoU sits at the threshold (one
+  detection list in 49,804 on the paper's captures, with identical AP).
+- `pgd_inflate` starts from a point drawn uniformly in the epsilon-ball by default
+  (`random_start=True`, optional `generator`), as the paper's attack does. Up to 2.1.0 it
+  started at zero, which is a different attack; `random_start=False` reproduces that.
+- `select_k_bonferroni`: the largest cap that passes at `alpha / len(grid)`, the rule the
+  paper's analysis plan declared for the suppression screen. `select_k_certified` (fixed
+  sequence) is unchanged.
+- README: reported results updated to the corrected values (867.3 ms uncapped and 4.25 ms
+  at K = 1024 on the deployed backend; clean cost 0.00061 on validation, 0.00018 held out).
+
 ## 2.1.0 (2026-10-30)
 
 Correctness fixes to suppression; admission, bounds and selection are unchanged.
